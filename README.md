@@ -6,10 +6,14 @@ A small offline tool to slice an Arcaea song folder into multiple clip-songs.
 Given an input folder:
 
 ```
-songs/<song_id>/
-  2.aff
-  base.ogg
-  base.jpg
+<root>/
+  songs/
+    <song_id>/
+      2.aff
+      base.ogg
+      base.jpg
+  slides.json
+  songlist_example.json
 ```
 
 and a `slides.json` describing segments (in milliseconds), this tool will create multiple new song folders:
@@ -38,20 +42,23 @@ Example:
 
 ```json
 {
-  "speed": 1.0,
+  "song_id": "test",
   "segments": [
     {"s": 30000, "e": 60000},
     {"s": 90000, "e": 120000}
-  ]
+  ],
+  "speed": 1.25
 }
 ```
 
-## Usage
+## Usage (recommended layout: slides/songlist next to songs folder)
+
+If `slides.json` and `songlist_example.json` are **at the same level as** the `songs/` folder:
 
 ```bash
 python -m arcaea_slicer \
   --songs-dir ./songs \
-  --song-id mySong \
+  --song-id test \
   --slides ./slides.json \
   --songlist-example ./songlist_example.json \
   --out ./out
@@ -63,4 +70,3 @@ Optional:
 ## Notes
 - Speed change is **tempo only** (pitch preserved) using `ffmpeg` `atempo`.
 - `.aff` slicing is best-effort and supports common commands (timing, tap, hold, arc/arctap, scenecontrol, camera, timinggroup).
-

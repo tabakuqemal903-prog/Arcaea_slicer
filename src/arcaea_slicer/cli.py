@@ -45,7 +45,7 @@ def main(argv: list[str] | None = None) -> int:
         prog="arcaea-slicer",
         description="Slice an Arcaea song folder (2.aff + base.ogg + base.jpg) into clip songs.",
     )
-    parser.add_argument("--songs-dir", required=True, type=Path, help="Root containing songs/<song_id>/")
+    parser.add_argument("--songs-dir", required=True, type=Path, help="Path to the songs/ folder")
     parser.add_argument("--song-id", required=True, help="Input song id (directory name under songs)")
     parser.add_argument("--slides", required=True, type=Path, help="Path to slides.json")
     parser.add_argument("--songlist-example", required=True, type=Path, help="Path to songlist_example.json")
