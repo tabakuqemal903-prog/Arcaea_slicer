@@ -50,4 +50,25 @@ def make_songlist_fragment(
     out["audioPreview"] = 0
     out["audioPreviewEnd"] = min(30000, max(0, clip_ms))
 
+    # Scale numeric BPM fields when speed differs from 1.0.
+    # Common keys: bpm_base, baseBpm, base_bpm (numeric); bpm (may be a string).
+    if speed != 1.0:
+        for key in ("bpm_base", "baseBpm", "base_bpm"):
+            if key in out and isinstance(out[key], (int, float)):
+                scaled = out[key] * speed
+                # Preserve integer type when the result is a whole number.
+                out[key] = int(scaled) if scaled == int(scaled) else round(scaled, 2)
+        # For the display string BPM field, scale only if it is a plain number.
+        if "bpm" in out and isinstance(out["bpm"], str):
+            try:
+                bpm_val = float(out["bpm"])
+                scaled = bpm_val * speed
+                # Keep as integer string if the result is whole, else 2 dp.
+                out["bpm"] = str(int(scaled)) if scaled == int(scaled) else f"{scaled:.2f}"
+            except ValueError:
+                pass  # complex bpm string like "120-240" – leave unchanged
+        elif "bpm" in out and isinstance(out["bpm"], (int, float)):
+            scaled = out["bpm"] * speed
+            out["bpm"] = int(scaled) if scaled == int(scaled) else round(scaled, 2)
+
     return {"songs": [out]}

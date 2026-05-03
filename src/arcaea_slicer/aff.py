@@ -11,7 +11,12 @@ class _Timing:
     beats: float
 
 
-_TIMING_RE = re.compile(r"timing\((\d+),(.*?),(.*?)\);", re.IGNORECASE)
+# Strict timing regex: anchored at start, captures exactly (int, float, float).
+# The ^ anchor prevents matching 'timing(' that appears mid-line (e.g. inside arc params).
+_TIMING_RE = re.compile(
+    r"^\s*timing\(\s*(\d+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\)\s*;",
+    re.IGNORECASE,
+)
 
 
 def _extract_header_and_body(aff_text: str) -> tuple[list[str], list[str]]:
@@ -37,7 +42,7 @@ def _extract_header_and_body(aff_text: str) -> tuple[list[str], list[str]]:
 def _parse_timings(lines: list[str]) -> list[_Timing]:
     timings: list[_Timing] = []
     for ln in lines:
-        m = _TIMING_RE.search(ln.replace(" ", ""))
+        m = _TIMING_RE.match(ln)
         if not m:
             continue
         t = int(m.group(1))
@@ -75,14 +80,20 @@ def _slice_line_simple(line: str, s: int, e: int, start_ms: int, speed: float) -
     if not stripped:
         return ""
 
-    # timing(t,bpm,beats);
-    m = re.match(r"\s*timing\((\d+),(.*)\);\s*", stripped, re.IGNORECASE)
+    # timing(t,bpm,beats);  — strict: must be the whole line, captures exactly 3 args
+    m = re.match(
+        r"^\s*timing\(\s*(\d+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\)\s*;\s*$",
+        stripped,
+        re.IGNORECASE,
+    )
     if m:
         t = int(m.group(1))
         if not _keep_point(t, s, e):
             return None
         t2 = _transform_time(t, start_ms, speed)
-        return re.sub(r"timing\(\d+,", f"timing({t2},", stripped, flags=re.IGNORECASE)
+        bpm = float(m.group(2))
+        beats = float(m.group(3))
+        return f"timing({t2},{bpm:.2f},{beats:.2f});"
 
     # camera(t,...);
     m = re.match(r"\s*camera\((\d+),(.*)\);\s*", stripped, re.IGNORECASE)
@@ -163,12 +174,31 @@ def _slice_block(lines: list[str], s: int, e: int, start_ms: int, speed: float) 
         stripped = line.strip()
 
         # timinggroup(...) { ... };
-        if stripped.lower().startswith("timinggroup") and "{" in stripped:
-            # naive brace matching line-by-line
-            group_header = stripped
-            brace = stripped.count("{") - stripped.count("}")
+        # Handle both same-line brace (timinggroup(...){) and brace on next line.
+        if stripped.lower().startswith("timinggroup"):
+            # Collect the full header up to and including the opening '{'.
+            group_header_parts = [stripped]
+            j = i + 1
+            while "{" not in stripped and j < len(lines):
+                stripped = lines[j].strip()
+                group_header_parts.append(stripped)
+                j += 1
+
+            if "{" not in "".join(group_header_parts):
+                # No opening brace found – treat as unknown line
+                sliced = _slice_line_simple(line, s, e, start_ms, speed)
+                if sliced is not None:
+                    out.append(sliced)
+                i += 1
+                continue
+
+            # Use group_header_parts up to the '{' part
+            full_header = " ".join(group_header_parts)
+            group_header = full_header.split("{", 1)[0].rstrip()
+
+            brace = sum(p.count("{") - p.count("}") for p in group_header_parts)
             inner: list[str] = []
-            i += 1
+            i = j
             while i < len(lines) and brace > 0:
                 l2 = lines[i]
                 brace += l2.count("{") - l2.count("}")
@@ -178,7 +208,7 @@ def _slice_block(lines: list[str], s: int, e: int, start_ms: int, speed: float) 
 
             # Process inner lines recursively
             inner_out = _slice_block(inner, s, e, start_ms, speed)
-            out.append(group_header.split("{", 1)[0] + "{")
+            out.append(group_header + "{")
             out.extend(inner_out)
             out.append("};")
             continue
