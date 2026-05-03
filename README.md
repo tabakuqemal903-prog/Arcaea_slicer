@@ -19,7 +19,7 @@ Given an input folder:
 and a `slides.json` describing segments (in milliseconds), this tool will create multiple new song folders:
 
 ```
-<out>/songs/<song_id>_<s>_<e>/
+out/songs/<song_id>_<s>_<e>/
   2.aff
   base.ogg
   base.jpg
@@ -36,7 +36,7 @@ It also generates a `songlist_fragment.json` for each clip based on a template `
 Keys:
 - `s`: start_ms
 - `e`: end_ms
-- optional top-level `speed`: default speed multiplier (e.g. `1.25`). If CLI `--speed` is provided, it overrides this.
+- optional top-level `speed`: default speed multiplier (e.g. `1.25`).
 
 Example:
 
@@ -51,9 +51,24 @@ Example:
 }
 ```
 
-## Usage (recommended layout: slides/songlist next to songs folder)
+## Simplified usage (recommended)
 
-If `slides.json` and `songlist_example.json` are **at the same level as** the `songs/` folder:
+Just run:
+
+```bash
+python -m arcaea_slicer --slice test
+```
+
+Assumptions in simplified mode:
+- `./songs/test/2.aff`
+- `./songs/test/base.ogg`
+- `./songs/test/base.jpg`
+- `./slides.json`
+- `./songlist_example.json`
+- output to `./out/songs/<new_id>/`
+- speed defaults to `slides.json` top-level `speed` (or 1.0 if missing)
+
+## Advanced usage
 
 ```bash
 python -m arcaea_slicer \

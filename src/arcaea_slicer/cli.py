@@ -40,36 +40,26 @@ def _load_slides(path: Path) -> tuple[str | None, list[Segment], float | None]:
     return song_id, segments, (float(speed) if speed is not None else None)
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
-        prog="arcaea-slicer",
-        description="Slice an Arcaea song folder (2.aff + base.ogg + base.jpg) into clip songs.",
-    )
-    parser.add_argument("--songs-dir", required=True, type=Path, help="Path to the songs/ folder")
-    parser.add_argument("--song-id", required=True, help="Input song id (directory name under songs)")
-    parser.add_argument("--slides", required=True, type=Path, help="Path to slides.json")
-    parser.add_argument("--songlist-example", required=True, type=Path, help="Path to songlist_example.json")
-    parser.add_argument("--out", type=Path, default=Path("./out"), help="Output root directory")
-    parser.add_argument(
-        "--speed",
-        type=float,
-        default=None,
-        help="Override speed (if omitted, use slides.json speed if present else 1.0)",
-    )
-    args = parser.parse_args(argv)
-
+def _do_slice(
+    *,
+    songs_dir: Path,
+    song_id: str,
+    slides_path: Path,
+    songlist_example_path: Path,
+    out_root: Path,
+    speed_override: float | None,
+) -> int:
     require_ffmpeg()
 
-    slides_song_id, segments, slides_speed = _load_slides(args.slides)
-    speed = args.speed if args.speed is not None else (slides_speed if slides_speed is not None else 1.0)
+    slides_song_id, segments, slides_speed = _load_slides(slides_path)
+    speed = speed_override if speed_override is not None else (slides_speed if slides_speed is not None else 1.0)
     if speed <= 0:
         raise SystemExit("speed must be > 0")
 
-    if slides_song_id and slides_song_id != args.song_id:
-        # Non-fatal, just warn.
-        print(f"[warn] slides.json song_id={slides_song_id!r} does not match --song-id={args.song_id!r}")
+    if slides_song_id and slides_song_id != song_id:
+        print(f"[warn] slides.json song_id={slides_song_id!r} does not match input song_id={song_id!r}")
 
-    in_song_dir = args.songs_dir / args.song_id
+    in_song_dir = songs_dir / song_id
     in_aff = in_song_dir / "2.aff"
     in_ogg = in_song_dir / "base.ogg"
     in_jpg = in_song_dir / "base.jpg"
@@ -78,18 +68,16 @@ def main(argv: list[str] | None = None) -> int:
         if not p.exists():
             raise SystemExit(f"Missing input file: {p}")
 
-    out_songs_root = args.out / "songs"
+    out_songs_root = out_root / "songs"
     out_songs_root.mkdir(parents=True, exist_ok=True)
 
     for seg in segments:
-        new_id = f"{args.song_id}_{seg.start_ms}_{seg.end_ms}"
+        new_id = f"{song_id}_{seg.start_ms}_{seg.end_ms}"
         out_song_dir = out_songs_root / new_id
         out_song_dir.mkdir(parents=True, exist_ok=True)
 
-        # Copy jacket
         shutil.copy2(in_jpg, out_song_dir / "base.jpg")
 
-        # Slice audio
         slice_ogg(
             in_path=in_ogg,
             out_path=out_song_dir / "base.ogg",
@@ -98,7 +86,6 @@ def main(argv: list[str] | None = None) -> int:
             speed=speed,
         )
 
-        # Slice chart
         aff_text = in_aff.read_text(encoding="utf-8", errors="replace")
         new_aff = slice_aff(
             aff_text=aff_text,
@@ -108,9 +95,8 @@ def main(argv: list[str] | None = None) -> int:
         )
         (out_song_dir / "2.aff").write_text(new_aff, encoding="utf-8")
 
-        # Songlist fragment
         frag = make_songlist_fragment(
-            songlist_example_path=args.songlist_example,
+            songlist_example_path=songlist_example_path,
             new_id=new_id,
             start_ms=seg.start_ms,
             end_ms=seg.end_ms,
@@ -124,3 +110,64 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[ok] wrote {out_song_dir}")
 
     return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="arcaea-slicer",
+        description="Slice an Arcaea song folder (2.aff + base.ogg + base.jpg) into clip songs.",
+    )
+
+    # Simplified mode
+    parser.add_argument(
+        "--slice",
+        metavar="SONG_ID",
+        help=(
+            "Simplified mode: only provide song id. Assumes ./songs/<id>/ and reads ./slides.json and "
+            "./songlist_example.json. Outputs to ./out/songs/<new_id>/"
+        ),
+    )
+
+    # Advanced mode
+    parser.add_argument("--songs-dir", type=Path, default=Path("./songs"), help="Path to the songs/ folder (default: ./songs)")
+    parser.add_argument("--song-id", help="Input song id (directory name under songs)")
+    parser.add_argument("--slides", type=Path, default=Path("./slides.json"), help="Path to slides.json (default: ./slides.json)")
+    parser.add_argument(
+        "--songlist-example",
+        type=Path,
+        default=Path("./songlist_example.json"),
+        help="Path to songlist_example.json (default: ./songlist_example.json)",
+    )
+    parser.add_argument("--out", type=Path, default=Path("./out"), help="Output root directory (default: ./out)")
+    parser.add_argument(
+        "--speed",
+        type=float,
+        default=None,
+        help="Override speed (if omitted, use slides.json speed if present else 1.0)",
+    )
+
+    args = parser.parse_args(argv)
+
+    if args.slice:
+        # Fully simplified: all paths are defaults
+        return _do_slice(
+            songs_dir=Path("./songs"),
+            song_id=args.slice,
+            slides_path=Path("./slides.json"),
+            songlist_example_path=Path("./songlist_example.json"),
+            out_root=Path("./out"),
+            speed_override=None,
+        )
+
+    # Advanced mode still supported
+    if not args.song_id:
+        raise SystemExit("Provide either --slice <song_id> or --song-id <song_id>")
+
+    return _do_slice(
+        songs_dir=args.songs_dir,
+        song_id=args.song_id,
+        slides_path=args.slides,
+        songlist_example_path=args.songlist_example,
+        out_root=args.out,
+        speed_override=args.speed,
+    )
