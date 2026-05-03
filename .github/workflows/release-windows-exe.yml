@@ -8,12 +8,16 @@ on:
 permissions:
   contents: write
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   build-and-upload:
     runs-on: windows-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -21,13 +25,17 @@ jobs:
           python-version: "3.11"
 
       - name: Install build deps
+        shell: pwsh
         run: |
           python -m pip install -U pip
           pip install -r requirements-build.txt
+          pip install .
 
       - name: Build exe (PyInstaller)
+        shell: pwsh
         run: |
-        pyinstaller -F -n arcaea-slicer src/arcaea_slicer/__main__.py
+          pyinstaller -F -n arcaea-slicer src/arcaea_slicer/__main__.py
+
       - name: Upload exe to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
