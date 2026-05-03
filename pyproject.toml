@@ -1,0 +1,17 @@
+[project]
+name = "arcaea-slicer"
+version = "0.1.0"
+description = "Slice Arcaea songs (2.aff + base.ogg) into multiple clip songs"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "tabakuqemal903-prog"}]
+
+[project.scripts]
+arcaea-slicer = "arcaea_slicer.__main__:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -1,0 +1,26 @@
+{
+  "songs": [
+    {
+      "idx": 129,
+      "id": "heavensdoor_71437_115437",
+      "title_localized": {"en": "Heavensdoor尾杀练习"},
+      "artist": "LeaF",
+      "bpm": "240",
+      "bpm_base": 240,
+      "set": "base",
+      "purchase": "",
+      "audioPreview": 0,
+      "audioPreviewEnd": 44000,
+      "side": 1,
+      "bg": "prelude_conflict",
+      "bg_inverse": "prelude_light",
+      "date": 1563408003,
+      "version": "2.2",
+      "difficulties": [
+        {"ratingClass": 0, "chartDesigner": "Kurorak", "jacketDesigner": "yusi. + Khronetic", "rating": 4},
+        {"ratingClass": 1, "chartDesigner": "Kurorak", "jacketDesigner": "yusi. + Khronetic", "rating": 7},
+        {"ratingClass": 2, "chartDesigner": "Black Tea", "jacketDesigner": "yusi. + Khronetic", "rating": 9, "ratingPlus": true}
+      ]
+    }
+  ]
+}
