@@ -27,8 +27,7 @@ jobs:
 
       - name: Build exe (PyInstaller)
         run: |
-          pyinstaller -F -n arcaea-slicer -m arcaea_slicer
-
+        pyinstaller -F -n arcaea-slicer src/arcaea_slicer/__main__.py
       - name: Upload exe to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
