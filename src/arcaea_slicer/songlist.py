@@ -50,4 +50,19 @@ def make_songlist_fragment(
     out["audioPreview"] = 0
     out["audioPreviewEnd"] = min(30000, max(0, clip_ms))
 
+    # Scale BPM fields to reflect the actual audio speed of the clip.
+    if speed != 1.0:
+        for key in ("bpm_base", "baseBpm", "base_bpm"):
+            if key in out and isinstance(out[key], (int, float)):
+                out[key] = round(out[key] * speed, 2)
+        # Scale string bpm field if it contains a plain number.
+        if "bpm" in out and isinstance(out["bpm"], str):
+            try:
+                scaled = out["bpm"].strip()
+                scaled_val = round(float(scaled) * speed, 2)
+                # Preserve int-like appearance when there is no fractional part.
+                out["bpm"] = str(int(scaled_val) if scaled_val == int(scaled_val) else scaled_val)
+            except (ValueError, TypeError):
+                pass
+
     return {"songs": [out]}
