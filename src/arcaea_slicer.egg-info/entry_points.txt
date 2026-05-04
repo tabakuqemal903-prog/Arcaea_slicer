@@ -1,2 +1,0 @@
-[console_scripts]
-arcaea-slicer = arcaea_slicer.__main__:main
