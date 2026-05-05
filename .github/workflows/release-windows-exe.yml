@@ -34,7 +34,7 @@ jobs:
       - name: Build exe (PyInstaller)
         shell: pwsh
         run: |
-          pyinstaller -F -n arcaea-slicer src/arcaea_slicer/__main__.py
+          pyinstaller -F -n arcaea-slicer --collect-submodules arcaea_slicer src/arcaea_slicer/__main__.py
 
       - name: Upload exe to GitHub Release
         uses: softprops/action-gh-release@v2
