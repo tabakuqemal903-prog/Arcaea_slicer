@@ -97,14 +97,17 @@ def _slice_line_simple(line: str, s: int, e: int, start_ms: int, speed: float) -
     if not stripped:
         return ""
 
-    # timing(t,bpm,beats);
-    m = re.match(r"\s*timing\((\d+),(.*)\);\s*", stripped, re.IGNORECASE)
+        # timing(t,bpm,beats);
+    m = re.match(r"\s*timing\(\s*(\d+)\s*,\s*([+-]?\d+(?:\.\d+)?)\s*,\s*([+-]?\d+(?:\.\d+)?)\s*\)\s*;\s*", stripped, re.IGNORECASE)
     if m:
         t = int(m.group(1))
         if not _keep_point(t, s, e):
             return None
+        bpm = float(m.group(2))
+        beats = float(m.group(3))
         t2 = _transform_time(t, start_ms, speed)
-        return re.sub(r"timing\(\d+,", f"timing({t2},", stripped, flags=re.IGNORECASE)
+        bpm2 = bpm * speed
+        return f"timing({t2},{bpm2:.2f},{beats:.2f});"
 
     # camera(t,...);
     m = re.match(r"\s*camera\((\d+),(.*)\);\s*", stripped, re.IGNORECASE)
@@ -253,7 +256,7 @@ def _slice_block(
                 if inner_out:
                     # Ensure group has a timing(0,...) so arcs in the group have a defined timing context.
                     if active is not None:
-                        inner_out = _inject_t0_timing(inner_out, active.bpm, active.beats)
+                        inner_out = _inject_t0_timing(inner_out, active.bpm * speed, active.beats)
                     out.append(group_header)
                     out.extend(inner_out)
                     out.append("};")
@@ -282,8 +285,8 @@ def slice_aff(aff_text: str, start_ms: int, end_ms: int, speed: float) -> str:
 
     # Ensure timing at t=0 exists in global scope: keep the last timing <= start_ms
     base_timing_line: str | None = None
-    if inherited is not None:
-        base_timing_line = f"timing(0,{inherited.bpm:.2f},{inherited.beats:.2f});"
+       if inherited is not None:
+        base_timing_line = f"timing(0,{(inherited.bpm * speed):.2f},{inherited.beats:.2f});"
 
     out_body = _slice_block(body, start_ms, end_ms, start_ms, speed, inherited)
 
