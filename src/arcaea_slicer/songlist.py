@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from pathlib import Path
 
 
@@ -49,5 +50,26 @@ def make_songlist_fragment(
     clip_ms = int(round((end_ms - start_ms) / speed))
     out["audioPreview"] = 0
     out["audioPreviewEnd"] = min(30000, max(0, clip_ms))
+        # Scale bpm fields according to speed (time axis scaled by 1/speed => bpm scaled by *speed)
+    if isinstance(out.get("bpm_base"), (int, float)):
+        out["bpm_base"] = round(float(out["bpm_base"]) * speed, 2)
+
+    bpm_val = out.get("bpm")
+    if isinstance(bpm_val, (int, float)):
+        # keep as string to match your songlist format (often "240")
+        out["bpm"] = f"{(float(bpm_val) * speed):g}"
+    elif isinstance(bpm_val, str):
+        s = bpm_val.strip()
+
+        # "240" or "240.0"
+        if re.fullmatch(r"[0-9]+(?:\.[0-9]+)?", s):
+            out["bpm"] = f"{(float(s) * speed):g}"
+        else:
+            # "120-240" (allow spaces)
+            m = re.fullmatch(r"([0-9]+(?:\.[0-9]+)?)\s*-\s*([0-9]+(?:\.[0-9]+)?)", s)
+            if m:
+                a = float(m.group(1)) * speed
+                b = float(m.group(2)) * speed
+                out["bpm"] = f"{a:g}-{b:g}"
 
     return {"songs": [out]}
