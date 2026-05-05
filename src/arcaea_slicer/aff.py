@@ -48,6 +48,28 @@ def _parse_timings(lines: list[str]) -> list[_Timing]:
     return timings
 
 
+def _active_timing_at(timings: list[_Timing], t0: int) -> _Timing | None:
+    """Return last timing with t <= t0 from a sorted timing list."""
+    chosen: _Timing | None = None
+    for t in timings:
+        if t.t <= t0:
+            chosen = t
+        else:
+            break
+    return chosen
+
+
+def _inject_t0_timing(lines: list[str], bpm: float, beats: float) -> list[str]:
+    """Ensure timing(0,...) exists near the top of a block."""
+    for ln in lines:
+        if re.match(r"^\s*timing\s*\(\s*0\s*,", ln.replace(" ", ""), re.IGNORECASE):
+            return lines
+        # If we hit a non-empty, non-timing line first, still inject at very top
+        if ln.strip():
+            break
+    return [f"timing(0,{bpm:.2f},{beats:.2f});"] + lines
+
+
 def _fmt_ms(ms: float) -> int:
     # Arcaea aff uses integer ms; keep rounding stable
     return int(round(ms))
@@ -141,10 +163,11 @@ def _slice_line_simple(line: str, s: int, e: int, start_ms: int, speed: float) -
         taps_blob = m.group(5)
 
         out = f"arc({ot1},{ot2},{base_inside})"
-        if taps_blob:
+        if taps_blob is not None:
             kept: list[str] = []
             for tm in re.finditer(r"arctap\((\d+)\)", taps_blob, re.IGNORECASE):
                 at = int(tm.group(1))
+                # Keep arctaps that remain within the (clamped) arc time window
                 if nt1 <= at <= nt2:
                     kept.append(f"arctap({_transform_time(at, start_ms, speed)})")
             out += "[" + ",".join(kept) + "]" if kept else "[]"
@@ -155,7 +178,59 @@ def _slice_line_simple(line: str, s: int, e: int, start_ms: int, speed: float) -
     return stripped
 
 
-def _slice_block(lines: list[str], s: int, e: int, start_ms: int, speed: float) -> list[str]:
+def _read_timinggroup_block(lines: list[str], i: int) -> tuple[str, list[str], int] | None:
+    """
+    If lines[i] starts a timinggroup, return (header_without_inner, inner_lines, next_index_after_block).
+    Supports '{' on same line or on a following line.
+    """
+    if i >= len(lines):
+        return None
+    first = lines[i].strip()
+    if not first.lower().startswith("timinggroup"):
+        return None
+
+    header = first
+
+    # Ensure we have an opening brace
+    brace = header.count("{") - header.count("}")
+    j = i + 1
+
+    if "{" not in header:
+        # Look ahead for the '{' line (often it's just "{")
+        while j < len(lines):
+            header2 = lines[j].strip()
+            # Merge only the brace line; keep it simple
+            header = header + " " + header2
+            brace += header2.count("{") - header2.count("}")
+            j += 1
+            if "{" in header2:
+                break
+
+    if "{" not in header:
+        return None  # malformed
+
+    # Now read inner until brace returns to 0
+    inner: list[str] = []
+    while j < len(lines) and brace > 0:
+        l2 = lines[j]
+        brace += l2.count("{") - l2.count("}")
+        if brace > 0:
+            inner.append(l2)
+        j += 1
+
+    # Normalize header to end with '{'
+    header_out = header.split("{", 1)[0].rstrip() + "{"
+    return header_out, inner, j
+
+
+def _slice_block(
+    lines: list[str],
+    s: int,
+    e: int,
+    start_ms: int,
+    speed: float,
+    inherited_t0: _Timing | None,
+) -> list[str]:
     out: list[str] = []
     i = 0
     while i < len(lines):
@@ -163,25 +238,28 @@ def _slice_block(lines: list[str], s: int, e: int, start_ms: int, speed: float) 
         stripped = line.strip()
 
         # timinggroup(...) { ... };
-        if stripped.lower().startswith("timinggroup") and "{" in stripped:
-            # naive brace matching line-by-line
-            group_header = stripped
-            brace = stripped.count("{") - stripped.count("}")
-            inner: list[str] = []
-            i += 1
-            while i < len(lines) and brace > 0:
-                l2 = lines[i]
-                brace += l2.count("{") - l2.count("}")
-                if brace > 0:
-                    inner.append(l2)
-                i += 1
+        if stripped.lower().startswith("timinggroup"):
+            parsed = _read_timinggroup_block(lines, i)
+            if parsed is not None:
+                group_header, inner, next_i = parsed
 
-            # Process inner lines recursively
-            inner_out = _slice_block(inner, s, e, start_ms, speed)
-            out.append(group_header.split("{", 1)[0] + "{")
-            out.extend(inner_out)
-            out.append("};")
-            continue
+                # Determine active timing at slice start within this group; fall back to inherited.
+                group_timings = _parse_timings(inner)
+                active = _active_timing_at(group_timings, s) or inherited_t0
+
+                inner_out = _slice_block(inner, s, e, start_ms, speed, active)
+
+                # Keep group only if it still has content.
+                if inner_out:
+                    # Ensure group has a timing(0,...) so arcs in the group have a defined timing context.
+                    if active is not None:
+                        inner_out = _inject_t0_timing(inner_out, active.bpm, active.beats)
+                    out.append(group_header)
+                    out.extend(inner_out)
+                    out.append("};")
+
+                i = next_i
+                continue
 
         sliced = _slice_line_simple(line, s, e, start_ms, speed)
         if sliced is not None:
@@ -197,28 +275,23 @@ def _slice_block(lines: list[str], s: int, e: int, start_ms: int, speed: float) 
 def slice_aff(aff_text: str, start_ms: int, end_ms: int, speed: float) -> str:
     header, body = _extract_header_and_body(aff_text)
 
-    # Ensure timing at t=0 exists: keep the last timing <= start_ms
     timings = _parse_timings(body)
+    inherited = _active_timing_at(timings, start_ms)
+    if inherited is None and timings:
+        inherited = timings[0]
+
+    # Ensure timing at t=0 exists in global scope: keep the last timing <= start_ms
     base_timing_line: str | None = None
-    if timings:
-        chosen = None
-        for t in timings:
-            if t.t <= start_ms:
-                chosen = t
-            else:
-                break
-        if chosen is None:
-            chosen = timings[0]
-        base_timing_line = f"timing(0,{chosen.bpm:.2f},{chosen.beats:.2f});"
+    if inherited is not None:
+        base_timing_line = f"timing(0,{inherited.bpm:.2f},{inherited.beats:.2f});"
 
-    out_body = _slice_block(body, start_ms, end_ms, start_ms, speed)
+    out_body = _slice_block(body, start_ms, end_ms, start_ms, speed, inherited)
 
-    # If we didn't keep any timing at 0, inject base timing at top
+    # If we didn't keep any timing at 0, inject base timing at top (global scope)
     if base_timing_line is not None:
         has_t0 = any(re.match(r"\s*timing\(0,", ln.replace(" ", ""), re.IGNORECASE) for ln in out_body)
         if not has_t0:
             out_body.insert(0, base_timing_line)
 
-    # Join with newline; preserve header exactly as read
     out_lines = header + out_body
     return "\n".join(out_lines).rstrip() + "\n"
