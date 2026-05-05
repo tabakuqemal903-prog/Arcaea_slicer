@@ -287,10 +287,19 @@ def slice_aff(aff_text: str, start_ms: int, end_ms: int, speed: float) -> str:
 
     out_body = _slice_block(body, start_ms, end_ms, start_ms, speed, inherited)
 
-    # If we didn't keep any timing at 0, inject base timing at top (global scope)
+      # If we didn't keep any GLOBAL timing at 0, inject base timing at top-level.
+    # Note: timing(0,...) inside timinggroup must NOT satisfy this check.
     if base_timing_line is not None:
-        has_t0 = any(re.match(r"\s*timing\(0,", ln.replace(" ", ""), re.IGNORECASE) for ln in out_body)
-        if not has_t0:
+        has_global_t0 = False
+        for ln in out_body:
+            s = ln.strip()
+            if s.lower().startswith("timinggroup"):
+                break
+            if re.match(r"\s*timing\(0,", ln.replace(" ", ""), re.IGNORECASE):
+                has_global_t0 = True
+                break
+
+        if not has_global_t0:
             out_body.insert(0, base_timing_line)
 
     out_lines = header + out_body
